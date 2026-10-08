@@ -12,6 +12,8 @@ final class OutputPipeline {
     private let left: OpaquePointer, right: OpaquePointer, resampler: OpaquePointer
     private let resources: DSPResources
     private var outputFrame: UInt64 = 0
+    private let lead: Double
+    private var nextTimingReport = 0.0
     private let leftStorage = FloatStorage(1024), rightStorage = FloatStorage(1024)
     private let interleavedStorage = FloatStorage(2048), convertedStorage = FloatStorage(4096)
     private(set) var failed = false
@@ -20,7 +22,7 @@ final class OutputPipeline {
     var onAuthenticationRequired: ((String, String) -> Void)?
     var onReady: ((String) -> Void)?
     init(output: AudioOutput, device: AudioDeviceID?, receiver: Receiver?, sourceRate: Double, firstFrame: UInt64, origin: Double, unixOrigin: Double, lead: Double, queue: DispatchQueue, useStoredCredentials: Bool = false) throws {
-        id = output.id; self.sourceRate = sourceRate; firstSourceFrame = firstFrame
+        id = output.id; self.sourceRate = sourceRate; self.lead = lead; firstSourceFrame = firstFrame
         let offset = Double(firstFrame) / sourceRate + lead
         audibleUnix = unixOrigin + offset
         if let device { let sink = try WiredEndpoint(device: device, startHost: origin + offset); wired = sink; rate = sink.rate }
@@ -58,15 +60,24 @@ final class OutputPipeline {
         }
     }
     func controls(volume: Float, muted: Bool, bypass: Bool) { for processor in [left, right] { rt_processor_set_controls(processor, volume, muted ? 1 : 0, bypass ? 1 : 0) } }
-    func process(_ stereo: UnsafePointer<Float>, frames: Int, sourceRatio: Double) {
+    func process(_ stereo: UnsafePointer<Float>, frames: Int, capture: CaptureEndpoint, unixHostOffset: Double) {
         guard !failed else { return }
         let l = leftStorage.pointer, r = rightStorage.pointer
         let interleaved = interleavedStorage.pointer, converted = convertedStorage.pointer
         rt_processor_process(left, stereo, l, UInt32(frames)); rt_processor_process(right, stereo, r, UInt32(frames))
         for i in 0..<frames { interleaved[i * 2] = l[i]; interleaved[i * 2 + 1] = r[i] }
-        let sinkRatio = wired.map { Double(bitPattern: rt_atomic_load($0.ratio)) } ?? 1
+        let sourcePosition = Double(firstSourceFrame) + rt_resampler_position(resampler)
+        let desiredHost = capture.hostTime(forFrame: sourcePosition) + lead
+        let presentation = wired?.presentation(forFrame: outputFrame)
+            ?? (host: audibleUnix + Double(outputFrame) / rate - unixHostOffset, ratio: 1.0)
+        let error = presentation.host - desiredHost
+        guard error.isFinite, abs(error) < 0.050 else {
+            fail("Playback clock changed discontinuously; rejoining outputs"); return
+        }
+        let conversion = rt_sync_ratio(sourceRate, rate,
+            Double(bitPattern: rt_atomic_load(capture.ratio)), presentation.ratio, error)
         var consumed: UInt32 = 0
-        let count = rt_resampler_process(resampler, interleaved, UInt32(frames), converted, 2048, sourceRate / rate * sourceRatio / sinkRatio, &consumed)
+        let count = rt_resampler_process(resampler, interleaved, UInt32(frames), converted, 2048, conversion, &consumed)
         guard consumed == frames else { fail("Resampler capacity exceeded; output stopped"); return }
         if let wired {
             if rt_buffer_write(wired.ring, converted, count, outputFrame) != count {
@@ -75,6 +86,12 @@ final class OutputPipeline {
         } else { airplay?.send(converted, frames: Int(count), audibleUnix: audibleUnix + Double(outputFrame) / rate) }
         outputFrame += UInt64(count)
         airplay?.checkDeadline()
+        let now = hostSeconds()
+        if !failed, now >= nextTimingReport, wired != nil || airplay?.scheduled == true {
+            nextTimingReport = now + 5
+            onStatus?(id, String(format: "Playing; estimated timing error %+.3f ms; clock speed %+.4f%%",
+                                 error * 1000, (presentation.ratio - 1) * 100))
+        }
     }
     func fail(_ reason: String) { guard !failed else { return }; failed = true; onStatus?(id, reason); stop() }
     func stop() { wired?.stop(); airplay?.stop() }
@@ -87,7 +104,7 @@ final class PlaybackEngine {
     private var pipelines: [String: OutputPipeline] = [:]
     private var timer: DispatchSourceTimer?
     private var frame: UInt64 = 0
-    private var origin = 0.0, unixOrigin = 0.0
+    private var origin = 0.0
     private var selected: [AudioOutput] = [], devices: [String: AudioDeviceID] = [:], receivers: [String: Receiver] = [:]
     private var mixes: [ChannelMix] = []
     private var volume: Float = 0.5, muted = false, bypass = false
@@ -134,7 +151,7 @@ final class PlaybackEngine {
             guard capture == nil else { return }
             let activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical], reason: "Synchronized Roomtastic audio playback")
             do {
-                origin = hostSeconds(); unixOrigin = Date().timeIntervalSince1970
+                origin = hostSeconds()
                 let endpoint = try CaptureEndpoint(device: driver, origin: origin)
                 try endpoint.start()
                 // Startup can block while HAL acquires the device. Begin at live capture,
@@ -185,8 +202,8 @@ final class PlaybackEngine {
                 for output in outputs where pipelines[output.id] == nil {
                     if let reason = authenticationRequired[output.id] { onStatus?(output.id, reason); throw AudioFailure(reason) }
                     do {
-                        let adjustedOrigin = capture.hostTime(forFrame: frame) - Double(frame) / capture.rate
-                        let pipeline = try OutputPipeline(output: output, device: devices[output.id], receiver: receivers[output.id], sourceRate: capture.rate, firstFrame: frame, origin: adjustedOrigin, unixOrigin: unixOrigin + adjustedOrigin - origin, lead: lead, queue: queue, useStoredCredentials: credentialPermission.contains(output.id))
+                        let adjustedOrigin = capture.hostTime(forFrame: Double(frame)) - Double(frame) / capture.rate
+                        let pipeline = try OutputPipeline(output: output, device: devices[output.id], receiver: receivers[output.id], sourceRate: capture.rate, firstFrame: frame, origin: adjustedOrigin, unixOrigin: Date().timeIntervalSince1970 - hostSeconds() + adjustedOrigin, lead: lead, queue: queue, useStoredCredentials: credentialPermission.contains(output.id))
                         observe(pipeline); failures.removeValue(forKey: output.id)
                         try pipeline.configure(mixes: mixes, volume: 0, muted: true, bypass: bypass)
                         staged[output.id] = pipeline
@@ -202,7 +219,7 @@ final class PlaybackEngine {
                 guard outputs.allSatisfy({ self.pipelines[$0.id]?.failed == false && (self.pipelines[$0.id]?.airplay?.scheduled ?? true) }) else { throw AudioFailure("Prepared output disappeared or lost its playback clock") }
                 for id in oldIDs.subtracting(newIDs) {
                     self.pipelines[id]?.controls(volume: 0, muted: true, bypass: bypass)
-                    self.pipelines[id]?.retiringAt = capture.hostTime(forFrame: self.frame) + self.lead + 0.05
+                    self.pipelines[id]?.retiringAt = capture.hostTime(forFrame: Double(self.frame)) + self.lead + 0.05
                 }
                 for output in outputs {
                     let pipeline = self.pipelines[output.id]!
@@ -304,13 +321,16 @@ final class PlaybackEngine {
         }
         for output in selected where pipelines[output.id] == nil && authenticationRequired[output.id] == nil && (devices[output.id] != nil || receivers[output.id] != nil) && now >= retries[output.id, default: 0] {
             do {
-                let adjustedOrigin = capture.hostTime(forFrame: frame) - Double(frame) / capture.rate
-                let pipeline = try OutputPipeline(output: output, device: devices[output.id], receiver: receivers[output.id], sourceRate: capture.rate, firstFrame: frame, origin: adjustedOrigin, unixOrigin: unixOrigin + adjustedOrigin - origin, lead: lead, queue: queue, useStoredCredentials: credentialPermission.contains(output.id))
+                let adjustedOrigin = capture.hostTime(forFrame: Double(frame)) - Double(frame) / capture.rate
+                let pipeline = try OutputPipeline(output: output, device: devices[output.id], receiver: receivers[output.id], sourceRate: capture.rate, firstFrame: frame, origin: adjustedOrigin, unixOrigin: Date().timeIntervalSince1970 - hostSeconds() + adjustedOrigin, lead: lead, queue: queue, useStoredCredentials: credentialPermission.contains(output.id))
                 observe(pipeline); failures.removeValue(forKey: output.id)
                 try pipeline.configure(mixes: mixes, volume: volume, muted: muted, bypass: bypass); pipelines[output.id] = pipeline
                 if pipeline.wired != nil { onOutputReady?(output.id) }
             } catch { failures[output.id] = error.localizedDescription; onStatus?(output.id, error.localizedDescription); retries[output.id] = now + 8 }
         }
+        // AirPlay's sender uses calendar time. Refresh its relationship to the
+        // Core Audio host clock so clock adjustments cannot accumulate as drift.
+        let unixHostOffset = Date().timeIntervalSince1970 - hostSeconds()
         var iterations = 0
         while available >= frame + 256, iterations < 48 {
             _ = rt_buffer_read(capture.ring, scratch, 256, frame)
@@ -320,13 +340,13 @@ final class PlaybackEngine {
                 for pipeline in pipelines.values {
                     measurement.routing.render(reference, from: measurement.index, outputID: pipeline.id,
                                                into: UnsafeMutableBufferPointer(start: scratch, count: 512))
-                    pipeline.process(scratch, frames: 256, sourceRatio: Double(bitPattern: rt_atomic_load(capture.ratio)))
+                    pipeline.process(scratch, frames: 256, capture: capture, unixHostOffset: unixHostOffset)
                 }
                 measurement.index += count
                 if measurement.index == reference.samples.count {
                     sweep = nil
                     let generation = measurement.generation, completion = measurement.completion
-                    let playbackEnd = capture.hostTime(forFrame: frame + 256) + lead + 0.1
+                    let playbackEnd = capture.hostTime(forFrame: Double(frame + 256)) + lead + 0.1
                     queue.asyncAfter(deadline: .now() + max(0, playbackEnd - hostSeconds())) { [weak self] in
                         guard let self, self.measurementSession, self.measurementGeneration == generation else { return }
                         guard self.selected.allSatisfy({ self.pipelines[$0.id]?.failed == false && (self.pipelines[$0.id]?.airplay?.scheduled ?? true) }) else { self.invalidateMeasurement("Output failed before measurement playback completed"); return }
@@ -336,7 +356,7 @@ final class PlaybackEngine {
                 else { sweep = measurement }
             } else {
                 if measurementSession { scratch.update(repeating: 0, count: 512) }
-                for pipeline in pipelines.values { pipeline.process(scratch, frames: 256, sourceRatio: Double(bitPattern: rt_atomic_load(capture.ratio))) }
+                for pipeline in pipelines.values { pipeline.process(scratch, frames: 256, capture: capture, unixHostOffset: unixHostOffset) }
             }
             frame += 256; iterations += 1
         }

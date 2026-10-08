@@ -62,6 +62,12 @@ RTClock* rt_clock_create(double nominalRate);
 void rt_clock_destroy(RTClock* clock);
 double rt_clock_update(RTClock* clock, double deviceSampleTime, double hostSeconds);
 
+// Correct accumulated presentation error as well as estimated clock speed.
+// Positive error means the next output sample is scheduled too late. Correction
+// settles over two seconds and is limited to 0.2% to avoid abrupt sample skips.
+double rt_sync_ratio(double sourceRate, double sinkRate, double sourceClockRatio,
+                     double sinkClockRatio, double presentationErrorSeconds);
+
 // Streaming nominal-rate conversion and adaptive resampling.
 // 32-tap, 1024-phase low-pass windowed sinc; 16 input-frame lookahead; bounded FIFO.
 // inputPerOutput must be [0.9,1.12], including 44.1/48k conversion plus drift:
@@ -76,6 +82,9 @@ uint32_t rt_resampler_process(RTResampler* resampler, const float* stereo, uint3
                              float* output, uint32_t outputCapacity, double inputPerOutput,
                              uint32_t* consumed);
 void rt_resampler_reset(RTResampler* resampler);
+// Exact source position of the NEXT output sample, including retained lookahead.
+// Same thread as process/reset. Input frames submitted is NOT this position.
+double rt_resampler_position(const RTResampler* resampler);
 #ifdef __cplusplus
 }
 #endif

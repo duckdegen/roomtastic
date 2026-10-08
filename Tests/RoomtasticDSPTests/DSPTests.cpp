@@ -156,6 +156,61 @@ static void clockDriftAndRecovery() {
     rt_clock_destroy(c);
 }
 
+// Model 30 minutes of two independent devices and a slewing calendar clock.
+// Deliberately bias speed estimates: frequency-only compensation accumulates
+// audible error even when its estimates are close to the true rates.
+static void longRunningPresentationSync() {
+    for (double sourceRate : {44100.0, 48000.0}) {
+        for (double sign : {-1.0, 1.0}) {
+            double now = 0, deviceFrames = 0;
+            double wiredFrames = 0, airplayFrames = 0, oldFrames = 0;
+            double peakWired = 0, peakAirplay = 0;
+            const double lead = 5, sinkRate = 48000;
+            while (now < 1800) {
+                const double sourceSpeed = 1 + sign * .0003;
+                const double sinkSpeed = 1 + sign * (now < 600 ? .0004 : -.0002);
+                const double sourceEstimate = sourceSpeed + sign * .000025;
+                const double sinkEstimate = sinkSpeed - sign * .000050;
+                // deviceFrames is measured relative to the fixed audible start.
+                const double wiredTime = lead + now + (wiredFrames - deviceFrames) / (sinkRate * sinkSpeed);
+                const double airplayTime = lead + airplayFrames / 44100 - now * .0000025;
+                const double wiredError = wiredTime - (now + lead);
+                const double airplayError = airplayTime - (now + lead);
+                if (now > 30 && !(now >= 600 && now < 630)) {
+                    peakWired = std::max(peakWired, std::abs(wiredError));
+                    peakAirplay = std::max(peakAirplay, std::abs(airplayError));
+                }
+                const double wiredRatio = rt_sync_ratio(sourceRate, sinkRate, sourceEstimate, sinkEstimate, wiredError);
+                const double airplayRatio = rt_sync_ratio(sourceRate, 44100, sourceEstimate, 1, airplayError);
+                wiredFrames += 256 / wiredRatio;
+                airplayFrames += 256 / airplayRatio;
+                oldFrames += 256 / (sourceRate / sinkRate * sourceEstimate / sinkEstimate);
+                const double dt = 256 / (sourceRate * sourceSpeed);
+                deviceFrames += dt * sinkRate * sinkSpeed;
+                now += dt;
+            }
+            assert(peakWired < .001 && peakAirplay < .001);
+            assert(std::abs(oldFrames - deviceFrames) / sinkRate > .1);
+        }
+    }
+    // An error accumulated during startup must recover even after the speed
+    // estimate becomes perfect. Test both leading and lagging playback.
+    for (double initialError : {-.020, .020}) {
+        double sourcePosition = 0, outputPosition = initialError * 48000;
+        for (int block = 0; block < 30 * 48000 / 256; ++block) {
+            const double error = (outputPosition - sourcePosition) / 48000;
+            const double ratio = rt_sync_ratio(48000, 48000, 1, 1, error);
+            sourcePosition += 256;
+            outputPosition += 256 / ratio;
+        }
+        assert(std::abs(outputPosition - sourcePosition) / 48000 < .00001);
+    }
+    // Wrong correction direction would increase an existing error.
+    assert(rt_sync_ratio(48000, 48000, 1, 1, .01) == 1.002);
+    assert(rt_sync_ratio(48000, 48000, 1, 1, -.01) == .998);
+    assert(rt_sync_ratio(48000, 48000, 1, 1, NAN) == 0);
+}
+
 static std::vector<float> resampleChunks(const std::vector<float>& input, uint32_t chunk, double ratio) {
     RTResampler* r = rt_resampler_create(128);
     assert(r);
@@ -226,7 +281,10 @@ static void callbackAllocationGuard() {
         assert(rt_processor_configure(p, .5, .5, 0, i, fir, 3));
         rt_processor_process(p, stereo, mono, 512);
         uint32_t consumed;
-        rt_resampler_process(r, stereo, 512, input, 512, 1.0005, &consumed);
+        const double before = rt_resampler_position(r);
+        const auto produced = rt_resampler_process(r, stereo, 512, input, 512, 1.0005, &consumed);
+        assert(std::abs(rt_resampler_position(r) - before - produced * 1.0005) < 1e-8);
+        assert(rt_sync_ratio(48000, 48000, 1, 1, .001) > 1);
         rt_clock_update(c, i * 512, double(i) * 512 / 48000);
     }
     forbidAllocation = false;
@@ -245,6 +303,6 @@ static void mixedApplicationHeadroom() {
 
 int main() {
     bufferDeadlines(); bufferConcurrent(); bufferConcurrentUnderflow();
-    processorLatencyAndSafety(); mixedApplicationHeadroom(); clockDriftAndRecovery(); resamplerContinuity(); callbackAllocationGuard();
+    processorLatencyAndSafety(); mixedApplicationHeadroom(); clockDriftAndRecovery(); resamplerContinuity(); longRunningPresentationSync(); callbackAllocationGuard();
     std::puts("Roomtastic DSP regression scenarios passed");
 }

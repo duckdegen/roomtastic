@@ -60,7 +60,7 @@ final class CaptureEndpoint {
         rt_atomic_store(ratio, clockRatio.bitPattern)
         version &+= 1; rt_atomic_store(timelineVersion, version)
     }
-    func hostTime(forFrame frame: UInt64) -> Double {
+    func hostTime(forFrame frame: Double) -> Double {
         for _ in 0..<8 {
             let before = rt_atomic_load(timelineVersion)
             if before & 1 != 0 { continue }
@@ -84,6 +84,10 @@ final class WiredEndpoint {
     private var callback: AudioDeviceIOProcID?
     private let scratchStorage = FloatStorage(16384)
     private var sampleOrigin: Double?
+    private let timelineVersion: OpaquePointer, timelineFrame: OpaquePointer, timelineHost: OpaquePointer
+    private var version: UInt64 = 0
+    // Snapshot cache belongs only to the processing queue.
+    private var lastTimeline: (frame: Double, host: Double, ratio: Double)?
     init(device: AudioDeviceID, startHost: Double) throws {
         self.device = device; self.startHost = startHost; self.deviceDelay = Hardware.deviceDelay(device)
         let format = try Hardware.streamFormat(device, scope: kAudioDevicePropertyScopeOutput); rate = format.mSampleRate
@@ -92,6 +96,9 @@ final class WiredEndpoint {
         ring = try resources.own(rt_buffer_create(524288, 2), destroy: rt_buffer_destroy)
         ratio = try resources.own(rt_atomic_create(Double(1).bitPattern), destroy: rt_atomic_destroy)
         clock = try resources.own(rt_clock_create(rate), destroy: rt_clock_destroy)
+        timelineVersion = try resources.own(rt_atomic_create(0), destroy: rt_atomic_destroy)
+        timelineFrame = try resources.own(rt_atomic_create(0), destroy: rt_atomic_destroy)
+        timelineHost = try resources.own(rt_atomic_create(startHost.bitPattern), destroy: rt_atomic_destroy)
         try checked(AudioDeviceCreateIOProcID(device, { _, _, _, _, output, outputTime, context in
             guard let context else { return noErr }
             Unmanaged<WiredEndpoint>.fromOpaque(context).takeUnretainedValue().render(output, time: outputTime.pointee)
@@ -107,13 +114,21 @@ final class WiredEndpoint {
         let frames = Int(first.mDataByteSize) / (4 * Int(first.mNumberChannels)); guard frames <= 8192 else { return }
         let seconds = hostSeconds(time.mHostTime) + deviceDelay
         let clockRatio = rt_clock_update(clock, time.mSampleTime, hostSeconds(time.mHostTime))
-        rt_atomic_store(ratio, clockRatio.bitPattern)
         // Keep the host deadline fixed while the sink clock converges before playback.
         if sampleOrigin == nil {
             let untilStart = (startHost - seconds) * rate * clockRatio
-            if untilStart >= Double(frames) { return }
+            if untilStart >= Double(frames) {
+                rt_atomic_store(ratio, clockRatio.bitPattern); return
+            }
             sampleOrigin = time.mSampleTime + untilStart
         }
+        // Publish the actual presentation position, not just clock speed. A
+        // speed estimate alone cannot repair errors accumulated earlier.
+        version &+= 1; rt_atomic_store(timelineVersion, version)
+        rt_atomic_store(timelineFrame, (time.mSampleTime - sampleOrigin!).bitPattern)
+        rt_atomic_store(timelineHost, seconds.bitPattern)
+        rt_atomic_store(ratio, clockRatio.bitPattern)
+        version &+= 1; rt_atomic_store(timelineVersion, version)
         let position = Int64((time.mSampleTime - sampleOrigin!).rounded())
         if position + Int64(frames) <= 0 { return }
         let prefix = position < 0 ? min(frames, Int(-position)) : 0
@@ -126,6 +141,20 @@ final class WiredEndpoint {
             for c in 0..<channels where channel + c < 2 { for f in 0..<frames { samples[f * channels + c] = scratch[f * 2 + channel + c] } }
             channel += channels
         }
+    }
+    func presentation(forFrame frame: UInt64) -> (host: Double, ratio: Double) {
+        for _ in 0..<8 {
+            let before = rt_atomic_load(timelineVersion)
+            if before == 0 || before & 1 != 0 { continue }
+            let position = Double(bitPattern: rt_atomic_load(timelineFrame))
+            let host = Double(bitPattern: rt_atomic_load(timelineHost))
+            let speed = Double(bitPattern: rt_atomic_load(ratio))
+            if before == rt_atomic_load(timelineVersion) {
+                lastTimeline = (position, host, speed); break
+            }
+        }
+        let last = lastTimeline ?? (0, startHost, Double(bitPattern: rt_atomic_load(ratio)))
+        return (last.1 + (Double(frame) - last.0) / (rate * last.2), last.2)
     }
     func stop() { if let callback { AudioDeviceStop(device, callback); AudioDeviceDestroyIOProcID(device, callback); self.callback = nil } }
     deinit { stop() }

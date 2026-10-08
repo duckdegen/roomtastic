@@ -227,6 +227,15 @@ double rt_clock_update(RTClock* c, double sample, double host) {
     return c->ratio;
 }
 
+double rt_sync_ratio(double sourceRate, double sinkRate, double sourceRatio,
+                     double sinkRatio, double error) {
+    if (!std::isfinite(sourceRate) || !std::isfinite(sinkRate) ||
+        !std::isfinite(sourceRatio) || !std::isfinite(sinkRatio) || !std::isfinite(error) ||
+        sourceRate <= 0 || sinkRate <= 0 || sourceRatio <= 0 || sinkRatio <= 0) return 0;
+    return sourceRate / sinkRate * sourceRatio / sinkRatio *
+        (1 + std::clamp(error / 2.0, -.002, .002));
+}
+
 struct RTResampler {
     static constexpr int taps = 32, phases = 1024;
     uint32_t capacity;
@@ -253,6 +262,7 @@ RTResampler* rt_resampler_create(uint32_t capacity) {
     try { return new RTResampler(capacity); } catch (...) { return nullptr; }
 }
 void rt_resampler_destroy(RTResampler* r) { delete r; }
+double rt_resampler_position(const RTResampler* r) { return r ? r->position : 0; }
 void rt_resampler_reset(RTResampler* r) { if (r) { r->base = r->end = 0; r->position = 0; } }
 uint32_t rt_resampler_process(RTResampler* r, const float* input, uint32_t inputFrames, float* output,
                              uint32_t outputCapacity, double ratio, uint32_t* consumed) {

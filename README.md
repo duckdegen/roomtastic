@@ -62,6 +62,10 @@ xcrun clang++ -std=c++17 -O2 -pthread -framework Accelerate \
 
 The C++ tests are not included in `swift test`. They check buffering, stale-audio rejection, clock drift, sample conversion, and processing without C++ heap allocation in the audio callback.
 
+Playback continuously compares each output's sample position with its scheduled presentation time and gently adjusts sample conversion to correct accumulated error. Wired outputs publish hardware timestamps; AirPlay scheduling accounts for changes between the Mac's calendar and audio clocks. Clock jumps larger than 50 ms discard the affected session and trigger a fresh connection. **Room Setup → Connection Details** reports estimated timing error every five seconds while playing; this is a software estimate, not a microphone measurement of the speakers.
+
+The timing regression includes 30-minute simulations at 44.1 and 48 kHz, imperfect clock-speed estimates, changing device speeds, and calendar-clock adjustment. To verify on hardware, play through an AirPort Express and the headphone output together for at least 30 minutes and compare their recorded relative delay near the beginning, at 10 minutes, and at the end. Also check reconnecting an output. A passing simulation alone does not establish audible synchronization.
+
 Build the iPhone app without device signing:
 
 ```sh
