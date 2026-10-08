@@ -1,0 +1,6 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-only
+set -euo pipefail
+# No audio daemons are killed. A reboot loads the HAL plug-in safely.
+echo 'Roomtastic installed. Restart macOS to load the driver and start the user audio agent.'
+echo 'AirPlay 2 shared PTP is opt-in: sudo "/Library/Application Support/Roomtastic/enable-ptp.sh" enable'

@@ -1,0 +1,11 @@
+# Build products; pinned vendor source and license files remain tracked.
+.DS_Store
+.build/
+build/
+dist/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+Vendor/airplay-cli/bin/
+Vendor/airplay-cli/build/
+Vendor/airplay-cli/**/libcodecs_patched.a

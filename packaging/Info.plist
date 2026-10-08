@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>RoomtasticMac</string>
+	<key>CFBundleIdentifier</key>
+	<string>org.roomtastic.app</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Roomtastic</string>
+	<key>CFBundleDisplayName</key>
+	<string>Roomtastic</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Roomtastic discovers AirPlay speakers and securely connects to your iPhone for room calibration.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_roomtastic._tcp</string>
+		<string>_airplay._tcp</string>
+		<string>_raop._tcp</string>
+	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Roomtastic captures the Roomtastic virtual audio input to route and synchronize your system audio.</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 Roomtastic contributors. GPL-3.0-only.</string>
+</dict>
+</plist>

@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "resolution": "Most specific matching path; vendor files retain their upstream notices. LicenseRef-Upstream requires consulting the referenced notices, not a new grant.",
+  "paths": [
+    {
+      "path": "Sources/RoomtasticMac/**",
+      "license": "GPL-3.0-only"
+    },
+    {
+      "path": "Sources/RoomtasticControl/**",
+      "license": "GPL-3.0-only"
+    },
+    {
+      "path": "Tests/**",
+      "license": "GPL-3.0-only"
+    },
+    {
+      "path": "Tests/RoomtasticTransportTests/**",
+      "license": "MIT"
+    },
+    {
+      "path": "Tests/RoomtasticSharedTests/**",
+      "license": "MIT"
+    },
+    {
+      "path": "Sources/RoomtasticService/**",
+      "license": "GPL-3.0-only"
+    },
+    {
+      "path": "Sources/RoomtasticDSP/**",
+      "license": "GPL-3.0-only"
+    },
+    {
+      "path": "Sources/RoomtasticCalibration/**",
+      "license": "GPL-3.0-only"
+    },
+    {
+      "path": "Sources/RoomtasticShared/**",
+      "license": "MIT"
+    },
+    {
+      "path": "Sources/RoomtasticTransport/**",
+      "license": "MIT"
+    },
+    {
+      "path": "iOS/**",
+      "license": "MIT"
+    },
+    {
+      "path": "scripts/**",
+      "license": "GPL-3.0-only"
+    },
+    {
+      "path": "packaging/**",
+      "license": "GPL-3.0-only"
+    },
+    {
+      "path": "Package.swift",
+      "license": "GPL-3.0-only"
+    },
+    {
+      "path": "Vendor/BlackHole/**",
+      "license": "GPL-3.0-only"
+    },
+    {
+      "path": "Vendor/airplay-cli/**",
+      "license": "LicenseRef-Upstream"
+    },
+    {
+      "path": "Vendor/airplay-cli/src/cliairplay.c",
+      "license": "GPL-2.0-or-later"
+    },
+    {
+      "path": "Vendor/airplay-cli/libraop/src/pairing.cpp",
+      "license": "LicenseRef-Unresolved-Upstream"
+    },
+    {
+      "path": "Vendor/airplay-cli/libraop/src/bplist.cpp",
+      "license": "LicenseRef-Unresolved-Upstream"
+    }
+  ],
+  "upstreamNotices": [
+    "Vendor/BlackHole/LICENSE",
+    "Vendor/airplay-cli/LICENSE",
+    "Vendor/airplay-cli/THIRD_PARTY_NOTICES.md"
+  ],
+  "distributionReviewRequired": [
+    "Pinned upstream airplay-cli notices identify no explicit upstream license grant for libraop/src/pairing.cpp and bplist.cpp. Resolve permission before public binary distribution.",
+    "The combined static sender is distributed under GPLv3 by upstream; individual components retain GPL, LGPL, Apache, MIT, BSD, OpenSSL and SSLeay notices.",
+    "Distribute the complete corresponding-source archive alongside any conveyed GPL binaries."
+  ]
+}

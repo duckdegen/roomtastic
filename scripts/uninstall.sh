@@ -1,0 +1,55 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-only
+set -euo pipefail
+[[ "$EUID" -eq 0 ]] || { echo 'Run explicitly as administrator: sudo uninstall.sh' >&2; exit 1; }
+check_bundle() {
+    local path="$1" expected="$2"
+    [[ ! -L "$path" ]] || { echo "Refusing symlink: $path" >&2; exit 1; }
+    if [[ -e "$path" ]]; then
+        [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$path/Contents/Info.plist")" == "$expected" ]] || {
+            echo "Refusing to remove unrelated bundle: $path" >&2; exit 1;
+        }
+    fi
+}
+check_bundle /Applications/Roomtastic.app org.roomtastic.app
+check_bundle /Library/Audio/Plug-Ins/HAL/Roomtastic.driver org.roomtastic.driver
+for path in '/Library/Application Support/Roomtastic' '/Library/Application Support/Roomtastic/Helpers' /Library/LaunchAgents/org.roomtastic.service.plist /Library/LaunchDaemons/org.roomtastic.ptp.plist; do
+    [[ ! -L "$path" ]] || { echo "Refusing symlink: $path" >&2; exit 1; }
+done
+stop_job() {
+    if /bin/launchctl print "$1" >/dev/null 2>&1; then
+        /bin/launchctl bootout "$1"
+    fi
+}
+stop_process() {
+    local uid="$1" name="$2" attempt
+    local pattern="^/Applications/Roomtastic[.]app/Contents/MacOS/$name( |$)"
+    if /usr/bin/pgrep -U "$uid" -f "$pattern" >/dev/null; then
+        /usr/bin/pkill -TERM -U "$uid" -f "$pattern" || true
+        for ((attempt = 0; attempt < 30; attempt++)); do
+            /usr/bin/pgrep -U "$uid" -f "$pattern" >/dev/null || return 0
+            sleep 1
+        done
+        echo "Refusing removal while $name for UID $uid is still running." >&2
+        exit 1
+    fi
+}
+# Graceful launchd termination must precede driver removal and restores prior output.
+while read -r user uid; do
+    if [[ "$uid" =~ ^[0-9]+$ ]] && (( uid >= 501 )); then
+        stop_process "$uid" RoomtasticMac
+        stop_job "gui/$uid/org.roomtastic.service"
+        stop_process "$uid" RoomtasticService
+    fi
+done < <(/usr/bin/dscl . -list /Users UniqueID)
+stop_job system/org.roomtastic.ptp
+rm -f /Library/LaunchAgents/org.roomtastic.service.plist /Library/LaunchDaemons/org.roomtastic.ptp.plist
+rm -rf /Applications/Roomtastic.app /Library/Audio/Plug-Ins/HAL/Roomtastic.driver
+rm -f '/Library/Application Support/Roomtastic/Helpers/cliairplay' \
+    '/Library/Application Support/Roomtastic/org.roomtastic.ptp.plist' \
+    '/Library/Application Support/Roomtastic/enable-ptp.sh' \
+    '/Library/Application Support/Roomtastic/service.sh' \
+    '/Library/Application Support/Roomtastic/uninstall.sh'
+rmdir '/Library/Application Support/Roomtastic/Helpers' '/Library/Application Support/Roomtastic' 2>/dev/null || true
+/usr/sbin/pkgutil --forget org.roomtastic.pkg >/dev/null 2>&1 || true
+echo 'Roomtastic removed. Restart macOS to unload its driver. Other HAL devices and all user presets were preserved.'

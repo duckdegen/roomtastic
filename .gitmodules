@@ -1,0 +1,6 @@
+[submodule "Vendor/BlackHole"]
+	path = Vendor/BlackHole
+	url = https://github.com/ExistentialAudio/BlackHole.git
+[submodule "Vendor/airplay-cli"]
+	path = Vendor/airplay-cli
+	url = https://github.com/music-assistant/airplay-cli.git

@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "dependencies": [
+    {
+      "path": "Vendor/BlackHole",
+      "repository": "https://github.com/ExistentialAudio/BlackHole.git",
+      "commit": "ffcb74433fbcf8c8ca5c736677c1a4864384dc09",
+      "submodules": []
+    },
+    {
+      "path": "Vendor/airplay-cli",
+      "repository": "https://github.com/music-assistant/airplay-cli.git",
+      "commit": "431c5c582eef9307c4e39c50a0ea65e970bc1128",
+      "submodules": [
+        {
+          "path": "libraop",
+          "commit": "81c2182649da8645ac2a58b78e9f370c79a4165b"
+        },
+        {
+          "path": "libraop/crosstools",
+          "commit": "41544c653760a205cbf6cebfdeda4a9394cc6455"
+        },
+        {
+          "path": "libraop/curve25519",
+          "commit": "67472447bc1f4278b7a07b38fdec3aa75f49e799"
+        },
+        {
+          "path": "libraop/dmap-parser",
+          "commit": "2f8ee61e2427a177beea919d72dde8931084fe51"
+        },
+        {
+          "path": "libraop/libcodecs",
+          "commit": "3234c96680fbe9f45047936a14df10edca822e5e"
+        },
+        {
+          "path": "libraop/libcodecs/alac",
+          "commit": "30e526563714325ff384968e116060c4ed606f06"
+        },
+        {
+          "path": "libraop/libcodecs/faac",
+          "commit": "a38aecee0d5cf934f540caebfda8889b848cd668"
+        },
+        {
+          "path": "libraop/libcodecs/faad2",
+          "commit": "3f312db2e6b9f65a0e8d5976303256af70ff714f"
+        },
+        {
+          "path": "libraop/libcodecs/flac",
+          "commit": "c87c4f4514c35eff54e4a08665a380fb43a6c8ea"
+        },
+        {
+          "path": "libraop/libcodecs/mad",
+          "commit": "54f589f78b1da780be742faafe6aa0f8405a5abb"
+        },
+        {
+          "path": "libraop/libcodecs/ogg",
+          "commit": "db5c7a49ce7ebda47b15b78471e78fb7f2483e22"
+        },
+        {
+          "path": "libraop/libcodecs/opus",
+          "commit": "bce1f392353d72d77d543bb2069a044ae1045e9d"
+        },
+        {
+          "path": "libraop/libcodecs/opusenc",
+          "commit": "e4285b5e8c20a06746f656102c5be8aef83f7ccb"
+        },
+        {
+          "path": "libraop/libcodecs/opusfile",
+          "commit": "0a4cd796df5b030cb866f3f4a5e41a4b92caddf5"
+        },
+        {
+          "path": "libraop/libcodecs/shine",
+          "commit": "aa4c0add37e5f4a11ddd4332bd569a0b3f60659a"
+        },
+        {
+          "path": "libraop/libcodecs/soxr",
+          "commit": "ee03a6bb3384d793ada0b1ea7722febbcaa3597d"
+        },
+        {
+          "path": "libraop/libcodecs/vorbis",
+          "commit": "84c023699cdf023a32fa4ded32019f194afcdad0"
+        },
+        {
+          "path": "libraop/libmdns",
+          "commit": "d7f58bf2791c3c25fd729d739a9267ce9db5b696"
+        },
+        {
+          "path": "libraop/libmdns/mdnssd",
+          "commit": "16402f3293b8bf09b8274ba7188202953d8e4f40"
+        },
+        {
+          "path": "libraop/libmdns/mdnssvc",
+          "commit": "314b5d80e36d7becc797f3000a713c8a56444145"
+        },
+        {
+          "path": "libraop/libopenssl",
+          "commit": "ac74d79efc7a702386fcf00d4b7e0a785721a3ed"
+        },
+        {
+          "path": "libraop/libopenssl/openssl",
+          "commit": "8ddacec11481a37302c19f4454e23299af399f83"
+        },
+        {
+          "path": "libraop/libpthreads4w",
+          "commit": "2ae750783281db5b5cd867649880b3b951ced781"
+        }
+      ]
+    }
+  ]
+}
